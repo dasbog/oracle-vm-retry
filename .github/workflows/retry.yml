@@ -2,7 +2,7 @@ name: Create Oracle VM
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # every 10 minutes (GitHub may run it a bit late)
+    - cron: "*/9 * * * *"   # every 10 minutes (GitHub may run it a bit late)
   workflow_dispatch: {}       # "Run workflow" button for a manual try
 
 concurrency:
