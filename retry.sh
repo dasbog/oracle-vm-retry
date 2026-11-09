@@ -3,8 +3,8 @@
 # Exit 0 = VM created / already exists / just out of capacity (try again next run).
 # Exit 1 = a real problem worth an email (bad key, wrong ID, free limit hit...).
 set -u
-ATTEMPTS="${ATTEMPTS:-8}"     # max tries per run
-MAX_SECONDS="${MAX_SECONDS:-600}"  # stop trying after 10 min so the job never times out
+ATTEMPTS="${ATTEMPTS:-100000}"  # effectively: keep trying until MAX_SECONDS
+MAX_SECONDS="${MAX_SECONDS:-20400}"  # ~5h40m per run, inside the 6h job limit
 PAUSE="${PAUSE:-60}"          # seconds between tries
 CFG="${INSTANCE_CONFIG_ID:-}"
 
