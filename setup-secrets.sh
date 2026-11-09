@@ -14,7 +14,6 @@ if [ ! -f "$KEYDIR/key.pem" ]; then
   openssl genrsa -out "$KEYDIR/key.pem" 2048 2>/dev/null
 fi
 openssl rsa -pubout -in "$KEYDIR/key.pem" -out "$KEYDIR/key_public.pem" 2>/dev/null
-FP=$(openssl rsa -pubout -outform DER -in "$KEYDIR/key.pem" 2>/dev/null | openssl md5 -c | awk '{print $NF}')
 
 # 2. Account details
 TENANCY="${OCI_TENANCY:?OCI_TENANCY not set - are you in Cloud Shell?}"
@@ -26,13 +25,23 @@ REGION=$(oci iam region-subscription list --tenancy-id "$TENANCY" \
   --query 'data[?"is-home-region"]."region-name" | [0]' --raw-output)
 say "Home region: $REGION"
 
-# 3. Register the public key with Oracle (skip if already there)
-if oci iam user api-key list --user-id "$USER_OCID" --query 'data[].fingerprint' --raw-output | grep -q "$FP"; then
+# 3. Register the public key with Oracle (skip if already there).
+# Fingerprint comes from Oracle itself (Cloud Shell's FIPS mode blocks MD5 locally).
+PUB=$(tr -d '\n\r' < "$KEYDIR/key_public.pem")
+FP=$(oci iam user api-key list --user-id "$USER_OCID" --output json | PUB="$PUB" python3 -c '
+import json,os,sys
+pub=os.environ["PUB"]
+for k in (json.load(sys.stdin) or {}).get("data",[]):
+    if k.get("key-value","").replace("\n","").replace("\r","")==pub: print(k["fingerprint"]); break')
+if [ -n "$FP" ]; then
   say "API key already registered with Oracle"
 else
   say "Registering API key with Oracle"
-  oci iam user api-key upload --user-id "$USER_OCID" --key-file "$KEYDIR/key_public.pem" >/dev/null
+  FP=$(oci iam user api-key upload --user-id "$USER_OCID" --key-file "$KEYDIR/key_public.pem" \
+    --query 'data.fingerprint' --raw-output)
 fi
+[ -n "$FP" ] || { echo "Could not get the key fingerprint."; exit 1; }
+say "Key fingerprint: $FP"
 
 # 4. Pick the instance configuration
 say "Looking for your instance configurations"
