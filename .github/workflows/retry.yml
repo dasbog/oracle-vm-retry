@@ -1,0 +1,63 @@
+name: Create Oracle VM
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 minutes (GitHub may run it a bit late)
+  workflow_dispatch: {}       # "Run workflow" button for a manual try
+
+concurrency:
+  group: oracle-vm-retry
+  cancel-in-progress: false
+
+permissions:
+  actions: write   # to switch the schedule off after success
+  issues: write    # to open an issue that notifies you on success
+
+jobs:
+  try:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OCI CLI
+        run: pip install --quiet oci-cli
+
+      - name: Write Oracle credentials
+        env:
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_KEY: ${{ secrets.OCI_KEY }}
+        run: |
+          mkdir -p ~/.oci
+          printf '%s\n' "$OCI_KEY" > ~/.oci/key.pem
+          chmod 600 ~/.oci/key.pem
+          cat > ~/.oci/config <<CFG
+          [DEFAULT]
+          user=$OCI_USER
+          tenancy=$OCI_TENANCY
+          fingerprint=$OCI_FINGERPRINT
+          region=$OCI_REGION
+          key_file=~/.oci/key.pem
+          CFG
+          chmod 600 ~/.oci/config
+
+      - name: Try to create the VM
+        id: try
+        env:
+          INSTANCE_CONFIG_ID: ${{ secrets.OCI_INSTANCE_CONFIG_ID }}
+          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
+        run: ./retry.sh
+
+      - name: Tell you and stop the schedule
+        if: steps.try.outputs.result == 'created' || steps.try.outputs.result == 'exists'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ steps.try.outputs.result }}" = "created" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "Oracle VM created!" \
+              --body "The VM was created. Open the Oracle console > Compute > Instances to see it. The schedule has been switched off."
+          fi
+          gh workflow disable retry.yml --repo "$GITHUB_REPOSITORY"
