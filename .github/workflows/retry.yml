@@ -61,3 +61,11 @@ jobs:
               --body "The VM was created. Open the Oracle console > Compute > Instances to see it. The schedule has been switched off."
           fi
           gh workflow disable retry.yml --repo "$GITHUB_REPOSITORY"
+
+      # GitHub's schedule is unreliable on new repos, so each run starts the next one.
+      # The chain stops by itself when the VM exists or a real error happens.
+      - name: Start the next try
+        if: steps.try.outputs.result == 'none'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run retry.yml --repo "$GITHUB_REPOSITORY" --ref main
