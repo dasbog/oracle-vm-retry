@@ -18,11 +18,13 @@ if [ -z "$CFG" ] || ! grep -q "PRIVATE KEY" ~/.oci/key.pem 2>/dev/null; then
   log "Secrets are not set up yet. Skipping this run."; echo "result=none" >> "$GITHUB_OUTPUT"; exit 0
 fi
 
-CFG_JSON=$(oci compute-management instance-configuration get --instance-configuration-id "$CFG" 2>&1) \
-  || { log "Could not read the instance configuration (check the secrets):"; echo "$CFG_JSON" | msg; exit 1; }
-COMPARTMENT=$(echo "$CFG_JSON" | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];print(d["instance-details"]["launch-details"]["compartment-id"])')
-SHAPE=$(echo "$CFG_JSON" | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];print(d["instance-details"]["launch-details"].get("shape") or "")')
+CFG_JSON=$(oci compute-management instance-configuration get --instance-configuration-id "$CFG" 2>/tmp/cfg.err) \
+  || { log "Could not read the instance configuration (check the secrets):"; msg < /tmp/cfg.err; exit 1; }
+CFG_JSON="{${CFG_JSON#*\{}"   # drop any warning text before the JSON
+COMPARTMENT=$(echo "$CFG_JSON" | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];ld=(d.get("instance-details") or {}).get("launch-details") or {};print(ld.get("compartment-id") or d["compartment-id"])')
+SHAPE=$(echo "$CFG_JSON" | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];ld=(d.get("instance-details") or {}).get("launch-details") or {};print(ld.get("shape") or "")')
 SHAPE="${SHAPE:-VM.Standard.A1.Flex}"
+COMPARTMENT="${COMPARTMENT:-$(grep "^tenancy" ~/.oci/config | cut -d= -f2)}"
 log "Instance configuration found (shape: $SHAPE)."
 
 already_exists() {
