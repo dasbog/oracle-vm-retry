@@ -86,14 +86,21 @@ export GH_TOKEN
 
 # 6. Store secrets
 say "Saving secrets to $REPO"
-gh secret set OCI_USER               --repo "$REPO" --body "$USER_OCID"
-gh secret set OCI_TENANCY            --repo "$REPO" --body "$TENANCY"
-gh secret set OCI_FINGERPRINT        --repo "$REPO" --body "$FP"
-gh secret set OCI_REGION             --repo "$REPO" --body "$REGION"
-gh secret set OCI_INSTANCE_CONFIG_ID --repo "$REPO" --body "$CFG_ID"
-gh secret set OCI_KEY                --repo "$REPO" < "$KEYDIR/key.pem"
+put() { # name value - retries because GitHub sometimes answers 503
+  for t in 1 2 3 4 5; do
+    printf '%s' "$2" | gh secret set "$1" --repo "$REPO" && return 0
+    echo "   GitHub hiccup, retrying in 5s..."; sleep 5
+  done
+  echo "Could not save $1. Run the script again in a minute."; exit 1
+}
+put OCI_USER               "$USER_OCID"
+put OCI_TENANCY            "$TENANCY"
+put OCI_FINGERPRINT        "$FP"
+put OCI_REGION             "$REGION"
+put OCI_INSTANCE_CONFIG_ID "$CFG_ID"
+put OCI_KEY                "$(cat "$KEYDIR/key.pem")"
 
 # 7. First run right away
 say "Starting a first run"
-gh workflow run retry.yml --repo "$REPO" && echo "Started. Check the Actions tab: https://github.com/$REPO/actions"
+( gh workflow run retry.yml --repo "$REPO" || { sleep 5; gh workflow run retry.yml --repo "$REPO"; } ) && echo "Started. Check the Actions tab: https://github.com/$REPO/actions"
 say "All done. Oracle may take a minute or two to accept a brand-new API key; if the first run says NotAuthenticated, just wait - the next scheduled run will work."
