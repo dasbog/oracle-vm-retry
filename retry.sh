@@ -5,13 +5,17 @@
 set -u
 ATTEMPTS="${ATTEMPTS:-8}"     # tries per run
 PAUSE="${PAUSE:-60}"          # seconds between tries
-CFG="$INSTANCE_CONFIG_ID"
+CFG="${INSTANCE_CONFIG_ID:-}"
 
 log() { echo "[$(date -u '+%H:%M:%S')] $*"; }
 msg() { python3 -c 'import json,sys
 t=sys.stdin.read(); i=t.find("{")
 try: d=json.loads(t[i:]); print(d.get("code",""), "-", d.get("message",""))
 except Exception: print(t.strip().splitlines()[-1] if t.strip() else "no output")'; }
+
+if [ -z "$CFG" ] || ! grep -q "PRIVATE KEY" ~/.oci/key.pem 2>/dev/null; then
+  log "Secrets are not set up yet. Skipping this run."; echo "result=none" >> "$GITHUB_OUTPUT"; exit 0
+fi
 
 CFG_JSON=$(oci compute-management instance-configuration get --instance-configuration-id "$CFG" 2>&1) \
   || { log "Could not read the instance configuration (check the secrets):"; echo "$CFG_JSON" | msg; exit 1; }
