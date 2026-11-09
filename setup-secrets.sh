@@ -46,12 +46,22 @@ say "Key fingerprint: $FP"
 
 # 4. Pick the instance configuration
 say "Looking for your instance configurations"
+PYLIST='import json,sys
+t=sys.stdin.read().strip()
+for i,n in (json.loads(t) if t else []) or []: print(i+"\t"+n)'
 mapfile -t CFGS < <(oci search resource structured-search \
-  --query-text "query instanceconfiguration resources where lifeCycleState = 'ACTIVE'" \
-  --query 'data.items[].[identifier, "display-name"]' --output json \
-  | python3 -c 'import json,sys
-for i,n in json.load(sys.stdin) or []: print(i+"\t"+n)')
-if [ ${#CFGS[@]} -eq 0 ]; then echo "No instance configuration found."; exit 1; fi
+  --query-text "query instanceconfiguration resources" \
+  --query 'data.items[].[identifier, "display-name"]' --output json 2>/dev/null | python3 -c "$PYLIST" || true)
+if [ ${#CFGS[@]} -eq 0 ]; then
+  mapfile -t CFGS < <(oci compute-management instance-configuration list --compartment-id "$TENANCY" --all \
+    --query 'data[].[id, "display-name"]' --output json 2>/dev/null | python3 -c "$PYLIST" || true)
+fi
+if [ ${#CFGS[@]} -eq 0 ]; then
+  echo "I could not find it automatically."
+  echo "Open Compute > Instance configurations, click yours, and use 'Copy' next to its OCID."
+  read -rp "Paste the instance configuration OCID: " MANUAL
+  CFGS=("$MANUAL"$'\t'"(pasted)")
+fi
 if [ ${#CFGS[@]} -eq 1 ]; then CHOICE=1; else
   for k in "${!CFGS[@]}"; do echo "  $((k+1)). ${CFGS[$k]#*$'\t'}"; done
   read -rp "Which one? Type its number: " CHOICE
