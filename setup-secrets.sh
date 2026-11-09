@@ -31,8 +31,9 @@ PUB=$(tr -d '\n\r' < "$KEYDIR/key_public.pem")
 FP=$(oci iam user api-key list --user-id "$USER_OCID" --output json | PUB="$PUB" python3 -c '
 import json,os,sys
 pub=os.environ["PUB"]
-for k in (json.load(sys.stdin) or {}).get("data",[]):
-    if k.get("key-value","").replace("\n","").replace("\r","")==pub: print(k["fingerprint"]); break')
+t=sys.stdin.read().strip()
+for k in (json.loads(t) if t else {}).get("data",[]):
+    if k.get("key-value","").replace("\n","").replace("\r","")==pub: print(k["fingerprint"]); break' || true)
 if [ -n "$FP" ]; then
   say "API key already registered with Oracle"
 else
