@@ -49,7 +49,7 @@ jobs:
         env:
           INSTANCE_CONFIG_ID: ${{ secrets.OCI_INSTANCE_CONFIG_ID }}
           OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
-        run: ./retry.sh
+        run: bash retry.sh
 
       - name: Tell you and stop the schedule
         if: steps.try.outputs.result == 'created' || steps.try.outputs.result == 'exists'
