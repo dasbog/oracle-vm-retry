@@ -3,7 +3,8 @@
 # Exit 0 = VM created / already exists / just out of capacity (try again next run).
 # Exit 1 = a real problem worth an email (bad key, wrong ID, free limit hit...).
 set -u
-ATTEMPTS="${ATTEMPTS:-8}"     # tries per run
+ATTEMPTS="${ATTEMPTS:-8}"     # max tries per run
+MAX_SECONDS="${MAX_SECONDS:-600}"  # stop trying after 10 min so the job never times out
 PAUSE="${PAUSE:-60}"          # seconds between tries
 CFG="${INSTANCE_CONFIG_ID:-}"
 
@@ -21,7 +22,8 @@ CFG_JSON=$(oci compute-management instance-configuration get --instance-configur
   || { log "Could not read the instance configuration (check the secrets):"; echo "$CFG_JSON" | msg; exit 1; }
 COMPARTMENT=$(echo "$CFG_JSON" | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];print(d["instance-details"]["launch-details"]["compartment-id"])')
 SHAPE=$(echo "$CFG_JSON" | python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];print(d["instance-details"]["launch-details"].get("shape") or "")')
-log "Instance configuration found (shape: ${SHAPE:-unknown})."
+SHAPE="${SHAPE:-VM.Standard.A1.Flex}"
+log "Instance configuration found (shape: $SHAPE)."
 
 already_exists() {
   oci compute instance list --compartment-id "$COMPARTMENT" --all \
@@ -29,13 +31,15 @@ already_exists() {
     --raw-output 2>/dev/null | grep -qv '^0$'
 }
 
-if [ -n "$SHAPE" ] && already_exists; then
+if already_exists; then
   log "A $SHAPE VM already exists. Nothing to do."; echo "result=exists" >> "$GITHUB_OUTPUT"; exit 0
 fi
 
+START=$(date +%s)
 for i in $(seq 1 "$ATTEMPTS"); do
+  [ $(( $(date +%s) - START )) -gt "$MAX_SECONDS" ] && break
   log "Attempt $i/$ATTEMPTS..."
-  OUT=$(oci compute-management instance-configuration launch-compute-instance --instance-configuration-id "$CFG" 2>&1)
+  OUT=$(oci --no-retry compute-management instance-configuration launch-compute-instance --instance-configuration-id "$CFG" 2>&1)
   if [ $? -eq 0 ]; then
     log "SUCCESS! The VM is being created."; echo "result=created" >> "$GITHUB_OUTPUT"; exit 0
   fi
